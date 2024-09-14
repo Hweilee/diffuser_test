@@ -40,13 +40,11 @@ class PixArtTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
     @property
     def dummy_input(self):
         batch_size = 4
-        in_channels = 4
-        sample_size = 8
         scheduler_num_train_steps = 1000
         cross_attention_dim = 8
         seq_len = 8
 
-        hidden_states = floats_tensor((batch_size, in_channels, sample_size, sample_size)).to(torch_device)
+        hidden_states = floats_tensor((batch_size,) + self.input_shape).to(torch_device)
         timesteps = torch.randint(0, scheduler_num_train_steps, size=(batch_size,)).to(torch_device)
         encoder_hidden_states = floats_tensor((batch_size, seq_len, cross_attention_dim)).to(torch_device)
 
@@ -86,11 +84,6 @@ class PixArtTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
-
-    def test_output(self):
-        super().test_output(
-            expected_output_shape=(self.dummy_input[self.main_input_name].shape[0],) + self.output_shape
-        )
 
     def test_correct_class_remapping_from_dict_config(self):
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
