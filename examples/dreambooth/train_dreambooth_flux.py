@@ -1187,7 +1187,8 @@ def main(args):
                     raise ValueError(f"Wrong model supplied: {type(model)=}.")
 
                 # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+                if weights:
+                    weights.pop()
 
     def load_model_hook(models, input_dir):
         for _ in range(len(models)):

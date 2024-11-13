@@ -1250,7 +1250,8 @@ def main(args):
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
                 # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+                if weights:
+                    weights.pop()
 
             FluxPipeline.save_lora_weights(
                 output_dir,
