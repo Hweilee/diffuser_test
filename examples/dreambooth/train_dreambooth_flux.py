@@ -1191,33 +1191,32 @@ def main(args):
                     weights.pop()
 
     def load_model_hook(models, input_dir):
-        if not accelerator.distributed_type == DistributedType.DEEPSPEED:
-            for _ in range(len(models)):
-                # pop models so that they are not loaded again
-                model = models.pop()
+        for _ in range(len(models)):
+            # pop models so that they are not loaded again
+            model = models.pop()
 
-                # load diffusers style into model
-                if isinstance(unwrap_model(model), FluxTransformer2DModel):
-                    load_model = FluxTransformer2DModel.from_pretrained(input_dir, subfolder="transformer")
-                    model.register_to_config(**load_model.config)
+            # load diffusers style into model
+            if isinstance(unwrap_model(model), FluxTransformer2DModel):
+                load_model = FluxTransformer2DModel.from_pretrained(input_dir, subfolder="transformer")
+                model.register_to_config(**load_model.config)
 
+                model.load_state_dict(load_model.state_dict())
+            elif isinstance(unwrap_model(model), (CLIPTextModelWithProjection, T5EncoderModel)):
+                try:
+                    load_model = CLIPTextModelWithProjection.from_pretrained(input_dir, subfolder="text_encoder")
+                    model(**load_model.config)
                     model.load_state_dict(load_model.state_dict())
-                elif isinstance(unwrap_model(model), (CLIPTextModelWithProjection, T5EncoderModel)):
+                except Exception:
                     try:
-                        load_model = CLIPTextModelWithProjection.from_pretrained(input_dir, subfolder="text_encoder")
+                        load_model = T5EncoderModel.from_pretrained(input_dir, subfolder="text_encoder_2")
                         model(**load_model.config)
                         model.load_state_dict(load_model.state_dict())
                     except Exception:
-                        try:
-                            load_model = T5EncoderModel.from_pretrained(input_dir, subfolder="text_encoder_2")
-                            model(**load_model.config)
-                            model.load_state_dict(load_model.state_dict())
-                        except Exception:
-                            raise ValueError(f"Couldn't load the model of type: ({type(model)}).")
-                else:
-                    raise ValueError(f"Unsupported model found: {type(model)=}")
+                        raise ValueError(f"Couldn't load the model of type: ({type(model)}).")
+            else:
+                raise ValueError(f"Unsupported model found: {type(model)=}")
 
-                del load_model
+            del load_model
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)

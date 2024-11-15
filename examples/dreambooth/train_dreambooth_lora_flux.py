@@ -1263,16 +1263,15 @@ def main(args):
         transformer_ = None
         text_encoder_one_ = None
 
-        if not accelerator.distributed_type == DistributedType.DEEPSPEED:
-            while len(models) > 0:
-                model = models.pop()
+        while len(models) > 0:
+            model = models.pop()
 
-                if isinstance(model, type(unwrap_model(transformer))):
-                    transformer_ = model
-                elif isinstance(model, type(unwrap_model(text_encoder_one))):
-                    text_encoder_one_ = model
-                else:
-                    raise ValueError(f"unexpected save model: {model.__class__}")
+            if isinstance(model, type(unwrap_model(transformer))):
+                transformer_ = model
+            elif isinstance(model, type(unwrap_model(text_encoder_one))):
+                text_encoder_one_ = model
+            else:
+                raise ValueError(f"unexpected save model: {model.__class__}")
 
         lora_state_dict = FluxPipeline.lora_state_dict(input_dir)
 
