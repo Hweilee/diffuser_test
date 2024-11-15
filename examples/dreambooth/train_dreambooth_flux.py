@@ -30,7 +30,7 @@ import numpy as np
 import torch
 import torch.utils.checkpoint
 import transformers
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
@@ -1191,32 +1191,33 @@ def main(args):
                     weights.pop()
 
     def load_model_hook(models, input_dir):
-        for _ in range(len(models)):
-            # pop models so that they are not loaded again
-            model = models.pop()
+        if not accelerator.distributed_type == DistributedType.DEEPSPEED:
+            for _ in range(len(models)):
+                # pop models so that they are not loaded again
+                model = models.pop()
 
-            # load diffusers style into model
-            if isinstance(unwrap_model(model), FluxTransformer2DModel):
-                load_model = FluxTransformer2DModel.from_pretrained(input_dir, subfolder="transformer")
-                model.register_to_config(**load_model.config)
+                # load diffusers style into model
+                if isinstance(unwrap_model(model), FluxTransformer2DModel):
+                    load_model = FluxTransformer2DModel.from_pretrained(input_dir, subfolder="transformer")
+                    model.register_to_config(**load_model.config)
 
-                model.load_state_dict(load_model.state_dict())
-            elif isinstance(unwrap_model(model), (CLIPTextModelWithProjection, T5EncoderModel)):
-                try:
-                    load_model = CLIPTextModelWithProjection.from_pretrained(input_dir, subfolder="text_encoder")
-                    model(**load_model.config)
                     model.load_state_dict(load_model.state_dict())
-                except Exception:
+                elif isinstance(unwrap_model(model), (CLIPTextModelWithProjection, T5EncoderModel)):
                     try:
-                        load_model = T5EncoderModel.from_pretrained(input_dir, subfolder="text_encoder_2")
+                        load_model = CLIPTextModelWithProjection.from_pretrained(input_dir, subfolder="text_encoder")
                         model(**load_model.config)
                         model.load_state_dict(load_model.state_dict())
                     except Exception:
-                        raise ValueError(f"Couldn't load the model of type: ({type(model)}).")
-            else:
-                raise ValueError(f"Unsupported model found: {type(model)=}")
+                        try:
+                            load_model = T5EncoderModel.from_pretrained(input_dir, subfolder="text_encoder_2")
+                            model(**load_model.config)
+                            model.load_state_dict(load_model.state_dict())
+                        except Exception:
+                            raise ValueError(f"Couldn't load the model of type: ({type(model)}).")
+                else:
+                    raise ValueError(f"Unsupported model found: {type(model)=}")
 
-            del load_model
+                del load_model
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
@@ -1667,31 +1668,31 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if global_step % args.checkpointing_steps == 0:
-                    # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
-                    if args.checkpoints_total_limit is not None:
-                        checkpoints = os.listdir(args.output_dir)
-                        checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
-                        checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+                if accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED:
+                    if global_step % args.checkpointing_steps == 0:
+                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                        if args.checkpoints_total_limit is not None:
+                            checkpoints = os.listdir(args.output_dir)
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
 
-                        # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
-                        if len(checkpoints) >= args.checkpoints_total_limit:
-                            num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
-                            removing_checkpoints = checkpoints[0:num_to_remove]
+                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                            if len(checkpoints) >= args.checkpoints_total_limit:
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                removing_checkpoints = checkpoints[0:num_to_remove]
 
-                            logger.info(
-                                f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
-                            )
-                            logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+                                logger.info(
+                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                                )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
-                            for removing_checkpoint in removing_checkpoints:
-                                removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
-                                shutil.rmtree(removing_checkpoint)
+                                for removing_checkpoint in removing_checkpoints:
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                    shutil.rmtree(removing_checkpoint)
 
-                    accelerator.wait_for_everyone()
-                    save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                    accelerator.save_state(save_path)
-                    logger.info(f"Saved state to {save_path}")
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        accelerator.save_state(save_path)
+                        logger.info(f"Saved state to {save_path}")
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
