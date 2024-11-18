@@ -23,7 +23,7 @@ from diffusers import AmusedInpaintPipeline, AmusedScheduler, UVit2DModel, VQMod
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -130,12 +130,11 @@ class AmusedInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_inference_batch_consistent(batch_sizes=batch_sizes, batch_generator=False)
 
     @unittest.skip("aMUSEd does not support lists of generators")
-    def test_inference_batch_single_identical(self):
-        ...
+    def test_inference_batch_single_identical(self): ...
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class AmusedInpaintPipelineSlowTests(unittest.TestCase):
     def test_amused_256(self):
         pipe = AmusedInpaintPipeline.from_pretrained("amused/amused-256")
