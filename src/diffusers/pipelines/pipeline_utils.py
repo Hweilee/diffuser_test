@@ -55,6 +55,7 @@ from ..utils import (
     is_accelerate_version,
     is_torch_npu_available,
     is_torch_version,
+    is_transformers_available,
     is_transformers_version,
     logging,
     numpy_to_pil,
@@ -66,6 +67,8 @@ from ..utils.torch_utils import is_compiled_module
 if is_torch_npu_available():
     import torch_npu  # noqa: F401
 
+if is_transformers_available():
+    from transformers import PreTrainedModel
 
 from .pipeline_loading_utils import (
     ALL_IMPORTABLE_CLASSES,
@@ -421,6 +424,15 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`. You can call `reset_device_map()` first and then call `to()`."
             )
 
+        pipeline_has_bnb = any(
+            (_check_bnb_status(module)[1] or _check_bnb_status(module)[-1]) for _, module in self.components.items()
+        )
+        # PR: https://github.com/huggingface/accelerate/pull/3223/
+        if pipeline_has_bnb and torch.device(device).type == "cuda" and is_accelerate_version("<", "1.1.0.dev0"):
+            raise ValueError(
+                "You are trying to call `.to('cuda')` on a pipeline that has models quantized with `bitsandbytes`. Your current `accelerate` installation does not support it. Please upgrade the installation."
+            )
+
         # Display a warning in this case (the operation succeeds but the benefits are lost)
         pipeline_is_offloaded = any(module_is_offloaded(module) for _, module in self.components.items())
         if pipeline_is_offloaded and device and torch.device(device).type == "cuda":
@@ -448,8 +460,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # This can happen for `transformer` models. CPU placement was added in
             # https://github.com/huggingface/transformers/pull/33122. So, we guard this accordingly.
-            if is_loaded_in_4bit_bnb and device is not None and is_transformers_version(">", "4.44.0"):
-                module.to(device=device)
+            # Additionally, bnb models are supposed to be on CUDA already.
+            if is_loaded_in_4bit_bnb and device is not None:
+                if is_transformers_available() and isinstance(module, PreTrainedModel):
+                    if is_transformers_version(">", "4.44.0"):
+                        module.to(device=device)
+                    else:
+                        logger.warning(
+                            f"{module.__class__.__name__} could not be placed on {device}. Module is still on {module.device}. Please update your `transformers` installation to the latest."
+                        )
+                # For `diffusers` it should not be a problem as we enforce the installation of a bnb version
+                # that already supports CPU placements.
+                else:
+                    module.to(device=device)
             elif not is_loaded_in_4bit_bnb and not is_loaded_in_8bit_bnb:
                 module.to(device, dtype)
 
