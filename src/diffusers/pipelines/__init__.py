@@ -169,6 +169,7 @@ else:
             "StableDiffusionPAGPipeline",
             "StableDiffusionPAGImg2ImgPipeline",
             "StableDiffusionControlNetPAGPipeline",
+            "StableDiffusionControlNetPAGImg2ImgPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
             "StableDiffusionXLControlNetPAGImg2ImgPipeline",
@@ -575,6 +576,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .mochi import MochiPipeline
         from .musicldm import MusicLDMPipeline
         from .pag import (
+            StableDiffusionControlNetPAGImg2ImgPipeline,
             AnimateDiffPAGPipeline,
             HunyuanDiTPAGPipeline,
             KolorsPAGPipeline,
