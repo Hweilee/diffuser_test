@@ -771,8 +771,8 @@ class PipelineFromPipeTesterMixin:
                 ), "`from_pipe` changed the attention processor in original pipeline."
 
     @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
+        torch_device="cpu" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
+        reason="CPU offload is only available with hardware accelerator and `accelerate v0.14.0` or higher",
     )
     def test_from_pipe_consistent_forward_pass_cpu_offload(self, expected_max_diff=1e-3):
         components = self.get_dummy_components()
@@ -780,7 +780,7 @@ class PipelineFromPipeTesterMixin:
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         pipe.set_progress_bar_config(disable=None)
         inputs = self.get_dummy_inputs_pipe(torch_device)
         output = pipe(**inputs)[0]
@@ -815,7 +815,7 @@ class PipelineFromPipeTesterMixin:
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
 
-        pipe_from_original.enable_model_cpu_offload()
+        pipe_from_original.enable_model_cpu_offload(device=torch_device)
         pipe_from_original.set_progress_bar_config(disable=None)
         inputs = self.get_dummy_inputs_pipe(torch_device)
         output_from_original = pipe_from_original(**inputs)[0]
@@ -1202,7 +1202,7 @@ class PipelineTesterMixin:
         self.assertTrue(hasattr(pipe, "components"))
         self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
+    @unittest.skipIf(torch_device="cpu", reason="float16 requires a hardware accelerator")
     def test_float16_inference(self, expected_max_diff=5e-2):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -1239,7 +1239,7 @@ class PipelineTesterMixin:
         max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
         self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
 
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
+    @unittest.skipIf(torch_device="cpu", reason="float16 requires a hardware accelerator")
     def test_save_load_float16(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
@@ -1320,7 +1320,7 @@ class PipelineTesterMixin:
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, expected_max_difference)
 
-    @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
+    @unittest.skipIf(torch_device="cpu", reason="Hardware accelerator and CPU are required to switch devices")
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -1333,11 +1333,11 @@ class PipelineTesterMixin:
         output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]
         self.assertTrue(np.isnan(output_cpu).sum() == 0)
 
-        pipe.to("cuda")
+        pipe.to(torch_device)
         model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
-        self.assertTrue(all(device == "cuda" for device in model_devices))
+        self.assertTrue(all(device == torch_device for device in model_devices))
 
-        output_cuda = pipe(**self.get_dummy_inputs("cuda"))[0]
+        output_cuda = pipe(**self.get_dummy_inputs(torch_device))[0]
         self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
 
     def test_to_dtype(self):
@@ -1395,8 +1395,8 @@ class PipelineTesterMixin:
             assert_mean_pixel_difference(to_np(output_with_slicing2[0]), to_np(output_without_slicing[0]))
 
     @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
+        torch_device="cpu" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
+        reason="CPU offload is only available with hardware accelerator and `accelerate v0.14.0` or higher",
     )
     def test_sequential_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
         import accelerate
@@ -1413,8 +1413,8 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(generator_device)
         output_without_offload = pipe(**inputs)[0]
 
-        pipe.enable_sequential_cpu_offload()
-        assert pipe._execution_device.type == "cuda"
+        pipe.enable_sequential_cpu_offload(device=torch_device)
+        assert pipe._execution_device.type == torch_device
 
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
@@ -1458,8 +1458,8 @@ class PipelineTesterMixin:
         )
 
     @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
+        torch_device="cpu" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
+        reason="CPU offload is only available with hardware accelerator and `accelerate v0.17.0` or higher",
     )
     def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
         import accelerate
@@ -1478,8 +1478,8 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(generator_device)
         output_without_offload = pipe(**inputs)[0]
 
-        pipe.enable_model_cpu_offload()
-        assert pipe._execution_device.type == "cuda"
+        pipe.enable_model_cpu_offload(device=torch_device)
+        assert pipe._execution_device.type == torch_device
 
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
@@ -1515,8 +1515,8 @@ class PipelineTesterMixin:
         )
 
     @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
+        torch_device="cpu" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
+        reason="CPU offload is only available with hardware accelerator and `accelerate v0.17.0` or higher",
     )
     def test_cpu_offload_forward_pass_twice(self, expected_max_diff=2e-4):
         import accelerate
@@ -1531,11 +1531,11 @@ class PipelineTesterMixin:
 
         pipe.set_progress_bar_config(disable=None)
 
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
 
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=torch_device)
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload_twice = pipe(**inputs)[0]
 
@@ -1572,8 +1572,8 @@ class PipelineTesterMixin:
         )
 
     @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
+        torch_device="cpu" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
+        reason="CPU offload is only available with hardware accelerator and `accelerate v0.14.0` or higher",
     )
     def test_sequential_offload_forward_pass_twice(self, expected_max_diff=2e-4):
         import accelerate
@@ -1588,11 +1588,11 @@ class PipelineTesterMixin:
 
         pipe.set_progress_bar_config(disable=None)
 
-        pipe.enable_sequential_cpu_offload()
+        pipe.enable_sequential_cpu_offload(device=torch_device)
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
 
-        pipe.enable_sequential_cpu_offload()
+        pipe.enable_sequential_cpu_offload(device=torch_device)
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload_twice = pipe(**inputs)[0]
 
